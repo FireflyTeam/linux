@@ -197,11 +197,16 @@ static void inno_hdmi_sys_power(struct inno_hdmi *hdmi, bool enable)
 
 static void inno_hdmi_set_pwr_mode(struct inno_hdmi *hdmi, int mode)
 {
+	u8 value;
+
 	switch (mode) {
 	case NORMAL:
 		inno_hdmi_sys_power(hdmi, false);
-
-		hdmi_writeb(hdmi, HDMI_PHY_PRE_EMPHASIS, 0x6f);
+		if (hdmi->tmds_rate > 140000000)
+			value = 0x6f;
+		else
+			value = 0x3f;
+		hdmi_writeb(hdmi, HDMI_PHY_PRE_EMPHASIS, value);
 		hdmi_writeb(hdmi, HDMI_PHY_DRIVER, 0xbb);
 
 		hdmi_writeb(hdmi, HDMI_PHY_SYS_CTL, 0x15);
@@ -645,6 +650,7 @@ static irqreturn_t inno_hdmi_i2c_irq(struct inno_hdmi *hdmi)
 	u8 stat;
 
 	stat = hdmi_readb(hdmi, HDMI_INTERRUPT_STATUS1);
+printk("%s: INTERRUPT_STATUS1 0x%x\n", __func__, stat);
 	if (!(stat & m_INT_EDID_READY))
 		return IRQ_NONE;
 
@@ -666,6 +672,7 @@ static irqreturn_t inno_hdmi_hardirq(int irq, void *dev_id)
 		ret = inno_hdmi_i2c_irq(hdmi);
 
 	interrupt = hdmi_readb(hdmi, HDMI_STATUS);
+printk("%s: STATUS 0x%x\n", __func__, interrupt);
 	if (interrupt & m_INT_HOTPLUG) {
 		hdmi_modb(hdmi, HDMI_STATUS, m_INT_HOTPLUG, m_INT_HOTPLUG);
 		ret = IRQ_WAKE_THREAD;
@@ -689,7 +696,7 @@ static int inno_hdmi_i2c_read(struct inno_hdmi *hdmi, struct i2c_msg *msgs)
 	u8 *buf = msgs->buf;
 	int ret;
 
-	ret = wait_for_completion_timeout(&hdmi->i2c->cmp, HZ / 10);
+	ret = wait_for_completion_timeout(&hdmi->i2c->cmp, HZ);
 	if (!ret)
 		return -EAGAIN;
 
@@ -743,7 +750,7 @@ static int inno_hdmi_i2c_xfer(struct i2c_adapter *adap,
 	hdmi_writeb(hdmi, HDMI_INTERRUPT_STATUS1, m_INT_EDID_READY);
 
 	for (i = 0; i < num; i++) {
-		DRM_DEV_DEBUG(hdmi->dev,
+		DRM_DEV_ERROR(hdmi->dev,
 			      "xfer: num: %d/%d, len: %d, flags: %#x\n",
 			      i + 1, num, msgs[i].len, msgs[i].flags);
 
